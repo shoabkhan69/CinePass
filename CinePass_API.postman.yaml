@@ -1,0 +1,643 @@
+openapi: 3.0.3
+info:
+  title: CinePass API
+  description: >
+    Movie ticket booking system REST API — browse movies, view showtimes, select seats,
+    book and cancel tickets, and (for admins) manage the movie/showtime catalog.
+    Import this file directly into Postman via **Import → File** to generate a full
+    request collection with example bodies.
+  version: "1.0.0"
+  contact:
+    name: CinePass
+
+servers:
+  - url: http://localhost:8080
+    description: Local development (H2 or Postgres profile)
+
+tags:
+  - name: Authentication
+  - name: Movies
+  - name: Showtimes
+  - name: Bookings
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/auth/register:
+    post:
+      tags: [Authentication]
+      summary: Create a new user account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              name: Alice Chen
+              email: alice@example.com
+              password: SuperSecret1
+      responses:
+        '201':
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Validation failed or email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Log in with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: admin@cinepass.com
+              password: Admin@123
+      responses:
+        '200':
+          description: Login succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Log out (stateless JWT — client discards the token)
+      security: []
+      responses:
+        '204':
+          description: Logged out
+
+  /api/movies:
+    get:
+      tags: [Movies]
+      summary: List all movies
+      security: []
+      responses:
+        '200':
+          description: Array of movies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MovieDto'
+    post:
+      tags: [Movies]
+      summary: Create a movie (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieDto'
+            example:
+              title: Nebula Drift
+              genre: Sci-Fi
+              duration: 142
+              rating: 4.6
+              posterUrl: https://image.tmdb.org/t/p/w500/sample_nebula_drift.jpg
+              synopsis: A salvage crew stumbles on a derelict ship carrying a signal that shouldn't exist.
+              cast: Ava Solano, Marcus Reyes
+      responses:
+        '201':
+          description: Movie created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MovieDto'
+        '400':
+          description: Validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Authenticated but not an admin
+
+  /api/movies/{id}:
+    get:
+      tags: [Movies]
+      summary: Get a single movie by id
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      responses:
+        '200':
+          description: Movie found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MovieDto'
+        '404':
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [Movies]
+      summary: Update a movie (admin only)
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovieDto'
+      responses:
+        '200':
+          description: Movie updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MovieDto'
+        '400':
+          description: Validation failed
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Authenticated but not an admin
+        '404':
+          description: Movie not found
+    delete:
+      tags: [Movies]
+      summary: Delete a movie (admin only)
+      description: >
+        Blocked with a 400 if the movie still has showtimes scheduled —
+        delete those first.
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      responses:
+        '204':
+          description: Movie deleted
+        '400':
+          description: Movie still has showtimes scheduled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Authenticated but not an admin
+        '404':
+          description: Movie not found
+
+  /api/movies/{id}/showtimes:
+    get:
+      tags: [Showtimes]
+      summary: List showtimes for a movie
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/MovieId'
+      responses:
+        '200':
+          description: Array of showtimes, ordered by date/time
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShowtimeDto'
+
+  /api/showtimes:
+    get:
+      tags: [Showtimes]
+      summary: List every showtime across all movies (admin only)
+      description: Used by the admin showtime management screen.
+      responses:
+        '200':
+          description: Array of all showtimes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ShowtimeDto'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Authenticated but not an admin
+    post:
+      tags: [Showtimes]
+      summary: Create a showtime (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShowtimeDto'
+            example:
+              movieId: 1
+              theatreName: CinePass Grand - Downtown
+              showDate: "2026-08-01"
+              showTime: "19:45:00"
+              ticketPrice: 250
+      responses:
+        '201':
+          description: Showtime created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShowtimeDto'
+        '400':
+          description: Validation failed
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Authenticated but not an admin
+        '404':
+          description: Movie not found
+
+  /api/showtimes/{id}/seats:
+    get:
+      tags: [Showtimes]
+      summary: Get the seat map for a showtime
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ShowtimeId'
+      responses:
+        '200':
+          description: 50-seat layout with currently booked seats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMapDto'
+        '404':
+          description: Showtime not found
+
+  /api/showtimes/{id}:
+    delete:
+      tags: [Showtimes]
+      summary: Delete a showtime (admin only)
+      description: >
+        Blocked with a 400 if the showtime already has bookings against it.
+      parameters:
+        - $ref: '#/components/parameters/ShowtimeId'
+      responses:
+        '204':
+          description: Showtime deleted
+        '400':
+          description: Showtime already has bookings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: Authenticated but not an admin
+        '404':
+          description: Showtime not found
+
+  /api/bookings:
+    post:
+      tags: [Bookings]
+      summary: Book seats for a showtime (logged-in users)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+            example:
+              showtimeId: 12
+              seatCodes: ["C4", "C5", "C6"]
+      responses:
+        '201':
+          description: Booking confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: >
+            Validation failed, more than 6 seats requested, an invalid seat
+            code, or a requested seat is already booked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+        '404':
+          description: Showtime not found
+
+  /api/bookings/mine:
+    get:
+      tags: [Bookings]
+      summary: List the logged-in user's own bookings
+      responses:
+        '200':
+          description: Array of bookings, most recent first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookingResponse'
+        '401':
+          description: Missing or invalid token
+
+  /api/bookings/{id}:
+    delete:
+      tags: [Bookings]
+      summary: Cancel a booking
+      description: >
+        Owners can cancel their own bookings; admins can cancel any booking.
+        Cancelled seats immediately become available again.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 501
+      responses:
+        '204':
+          description: Booking cancelled
+        '400':
+          description: Not your booking, or already cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid token
+        '404':
+          description: Booking not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Paste the token returned from /api/auth/login or /api/auth/register.
+        In Postman, set this on the collection/folder level so all requests inherit it.
+
+  parameters:
+    MovieId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 1
+    ShowtimeId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+      example: 12
+
+  schemas:
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        name:
+          type: string
+          example: Alice Chen
+        email:
+          type: string
+          format: email
+          example: alice@example.com
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: SuperSecret1
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@cinepass.com
+        password:
+          type: string
+          format: password
+          example: Admin@123
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbGljZUBleGFtcGxlLmNvbSJ9.signature
+        userId:
+          type: integer
+          format: int64
+          example: 7
+        name:
+          type: string
+          example: Alice Chen
+        email:
+          type: string
+          example: alice@example.com
+        isAdmin:
+          type: boolean
+          example: false
+
+    MovieDto:
+      type: object
+      required: [title, genre, duration, rating, synopsis]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+          example: 1
+        title:
+          type: string
+          example: Nebula Drift
+        genre:
+          type: string
+          example: Sci-Fi
+        duration:
+          type: integer
+          description: Runtime in minutes
+          example: 142
+        rating:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 5
+          example: 4.6
+        posterUrl:
+          type: string
+          example: https://image.tmdb.org/t/p/w500/sample_nebula_drift.jpg
+        synopsis:
+          type: string
+          example: A salvage crew stumbles on a derelict ship carrying a signal that shouldn't exist.
+        cast:
+          type: string
+          example: Ava Solano, Marcus Reyes, Ken Ibarra
+
+    ShowtimeDto:
+      type: object
+      required: [movieId, theatreName, showDate, showTime, ticketPrice]
+      properties:
+        id:
+          type: integer
+          format: int64
+          readOnly: true
+          example: 12
+        movieId:
+          type: integer
+          format: int64
+          example: 1
+        movieTitle:
+          type: string
+          readOnly: true
+          example: Nebula Drift
+        theatreName:
+          type: string
+          example: CinePass Grand - Downtown
+        showDate:
+          type: string
+          format: date
+          example: "2026-08-01"
+        showTime:
+          type: string
+          example: "19:45:00"
+        ticketPrice:
+          type: number
+          format: double
+          example: 250
+
+    SeatMapDto:
+      type: object
+      properties:
+        showtimeId:
+          type: integer
+          format: int64
+          example: 12
+        allSeats:
+          type: array
+          items:
+            type: string
+          example: ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10"]
+        bookedSeats:
+          type: array
+          items:
+            type: string
+          example: ["B3", "B4", "C7"]
+
+    BookingRequest:
+      type: object
+      required: [showtimeId, seatCodes]
+      properties:
+        showtimeId:
+          type: integer
+          format: int64
+          example: 12
+        seatCodes:
+          type: array
+          maxItems: 6
+          items:
+            type: string
+          example: ["C4", "C5", "C6"]
+
+    BookingResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 501
+        showtimeId:
+          type: integer
+          format: int64
+          example: 12
+        movieTitle:
+          type: string
+          example: Nebula Drift
+        posterUrl:
+          type: string
+          example: https://image.tmdb.org/t/p/w500/sample_nebula_drift.jpg
+        theatreName:
+          type: string
+          example: CinePass Grand - Downtown
+        showDate:
+          type: string
+          format: date
+          example: "2026-08-01"
+        showTime:
+          type: string
+          example: "19:45:00"
+        seatCodes:
+          type: array
+          items:
+            type: string
+          example: ["C4", "C5", "C6"]
+        totalAmount:
+          type: number
+          format: double
+          example: 750
+        status:
+          type: string
+          enum: [CONFIRMED, CANCELLED]
+          example: CONFIRMED
+        bookingDate:
+          type: string
+          format: date-time
+          example: "2026-07-31T14:22:05"
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-07-31T14:22:05"
+        path:
+          type: string
+          example: /api/bookings
+        error:
+          type: string
+          example: Bad Request
+        message:
+          type: string
+          example: Maximum 6 seats can be booked at once
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+          example:
+            email: Email must be valid
