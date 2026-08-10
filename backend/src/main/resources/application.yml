@@ -1,0 +1,67 @@
+spring:
+  application:
+    name: cinepass-backend
+
+  profiles:
+    active: dev
+
+  jackson:
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  error:
+    include-message: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+cinepass:
+  jwt:
+    # Demo secret only - override via CINEPASS_JWT_SECRET env var in real deployments
+    secret: ${CINEPASS_JWT_SECRET:c2luZXBhc3MtZGVtby1zZWNyZXQta2V5LWNoYW5nZS1pbi1wcm9kdWN0aW9uLTIwMjY=}
+    expiration-ms: 86400000 # 24 hours
+  cors:
+    allowed-origins: ${CINEPASS_CORS_ORIGINS:http://localhost:5173}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:h2:mem:cinepass;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+    database-platform: org.hibernate.dialect.H2Dialect
+
+---
+spring:
+  config:
+    activate:
+      on-profile: postgres
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cinepass}
+    username: ${DB_USERNAME:cinepass}
+    password: ${DB_PASSWORD:cinepass}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
